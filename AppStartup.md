@@ -4,11 +4,17 @@
 ## Ken Ackerson
 
 
-^ I am a staff engineer at tumblr,
-- building new features
+^- Thanks to organizers of Altconf
+-I am an engineer at tumblr, on the Mobile Core Team
+
+^- building new features
 - building developer tools
 - building frameworks for developers (networking and UI)
-- and most recently a big focus on application startup performance
+- and most recently a big focus on application startup performance project
+
+
+^ - This talk is focused on folks who have played around into instruments and have diagnosed some performance problems before - but want to get super serious about getting there app to launch as fast as possible
+- I'll try to leave time for questions
 
 ---
 
@@ -22,6 +28,33 @@
 
 ---
 
+# What is Application Startup Time
+
+- Pre-Main time + Post-Main time = Application Startup Time
+
+- Time for the user to be able to interact with your application after pressing the Icon
+
+^ - Time to get the user to interact with the application
+- Especially in a meaningful way
+- Cold vs Warm - we typically focus on cold 
+
+---
+
+
+# Why it matters
+
+- 86% of consumers have deleted applications because of performance issues.
+	- *[Source](https://www.appdynamics.com/media/uploaded-files/1425406960/app-attention-span-research-report-1.pdf)*
+- Users **hate** to wait
+
+^ -Study after study conclude that performance is a key aspect of driving user engagement and retention AND revenue.
+- Checkout that source for even more data around this impact as well
+- Dropoff after multiple seconds is incredibly high
+
+^- Apple is focusing on performance in iOS 12 as a key part
+
+---
+
 # Backstory
 
 ## 2016
@@ -32,19 +65,9 @@
 
 ^ We had some very high level ideas about what was wrong.
 
+^ Started out on a journey to optimize down our startup time
+
 --- 
-
-# Why it matters
-
-- 86% of consumers have deleted applications because of performance issues.
-	- *[Source](https://www.appdynamics.com/media/uploaded-files/1425406960/app-attention-span-research-report-1.pdf)*
-- Users hate to wait
-
-^ Study after study conclude that performance is a key aspect of driving user engagement and retention AND revenue.
-Checkout that source for even more data around this impact as well
-Apple is focusing on performance in iOS 12 as a key part of the 
-
----
 
 > App to slow! One Star!!
 -- App Store Review
@@ -60,7 +83,7 @@ Apple is focusing on performance in iOS 12 as a key part of the
 - You can add something like this:
 
 ```swift
-static func measure(function: () -> ()) {
+func measure(function: () -> ()) {
     let time = CFAbsoluteTimeGetCurrent()
     function()
     let t2 = CFAbsoluteTimeGetCurrent()
@@ -74,8 +97,9 @@ measure {
 
 ```
 
-^ Measure in release mode
-Add this quick and dirty measure function 
+^ - Measure in Release mode
+- We always measure on the slowest devices (iPhone 5 and iPhone 6)
+- Add this quick and dirty measure function 
 
 ---
 
@@ -86,9 +110,10 @@ Add this quick and dirty measure function
 - Time Profiler
 - Network
 
-^ These are the main instruments
-We use these to check out what our app is doing and finding performance issues
-Not going to go to much into these but will cover the System Usage instrument later
+^-These are the main instruments
+- We use these to check out what our app is doing and finding performance issues
+- Not going to go to much into these but will cover the System Usage instrument later
+- There are also a bunch of really great instruments to help you - so check it out 
 
 ---
 
@@ -97,12 +122,12 @@ Not going to go to much into these but will cover the System Usage instrument la
 - Before `UIApplication` callbacks
 - View metrics with the `DYLD_PRINT_STATISTICS` env variable
 
-^ So before willFinishLaunching 
+^- So before willFinishLaunching 
+- Apple recommends all of this finishes within 400 ms (time of animation)
 
 ---
 
 ![inline](dyld.png)
-
 
 ---
 
@@ -121,15 +146,11 @@ Total pre-main time: 2.3 seconds (100.0%)
 
 ```
 
----
-
-# Parts of pre-main
-
+^ - Breaks down pre-main time into parts 
 - dylib loading time
 - rebase/binding time
 - ObjC setup time
 - initializer time
-
 
 --- 
 
@@ -138,7 +159,8 @@ Total pre-main time: 2.3 seconds (100.0%)
 - Loading of dynamic libraries
 	- Apple recommends only 6 non-Apple dynamic libraries 
 
-^ The first and one of the main problems we had was this dylib loading time; we had upwards of 66 dynamic frameworks in 2015-2016
+^-The first and one of the main problems we had was this dylib loading time
+- we had upwards of 66 dynamic frameworks in 2015-2016
 
 ---
 
@@ -156,6 +178,10 @@ Mixed static libraries and dynamic frameworks
 
 Almost exclusively static libraries where possible 
 
+^ - 66 third party (non-Apple) dynamic frameworks
+- Mixed static libraries and dynamic frameworks
+- Almost exclusively static libraries where possible 
+
 --- 
 
 # Switch to static libraries
@@ -165,8 +191,9 @@ Almost exclusively static libraries where possible
 	- Turn off `use_frameworks!`
 - Hybrid solutions if needed
 
-^ For a year or so before Cocoapods 1.5.x - we have had a hybrid solution where many of our Objective-C libraries that were only linked with our main application. 
-Bottom line is that the more dynamic libraries you remove or convert to static libraries - the faster your application will launch for cold starts
+^- For a year or so before Cocoapods 1.5.x 
+- we have had a hybrid solution where many of our Objective-C libraries that were only linked with our main application. 
+- Bottom line is that the more dynamic libraries you remove or convert to static libraries - the faster your application will launch for cold starts
 
 
 ---
@@ -174,6 +201,10 @@ Bottom line is that the more dynamic libraries you remove or convert to static l
 # Results
 
 ![inline](loadtime.png)
+
+^-History of tumblrs DYLD time
+- between 2.5x and 3.0x
+- Takes a lot of work
 
 --- 
 
@@ -184,28 +215,59 @@ Bottom line is that the more dynamic libraries you remove or convert to static l
 - Remove unused Objective-C code
 - Use Swift
 
-^ At Tumblr we write almost all new code in swift - Swift structs tend to be faster and there is less to do with Swift code at startup, generally
+^ - Setting up objc categories, classes, and selectors
+- At Tumblr we write almost all new code in swift
+- Swift structs tend to be faster and there is less to do with Swift code at startup, generally
 
 ---
 
 # Post-main
 
 
-^ Everything after our `UIApplication` callbacks 
-This is where things start to be more about how we are writing our code and what we are doing.
-Most applications have a couple things in common: 
-Donwloading JSON and displaying it, so post-main I am going to focus on that use case
+^- Everything after our `UIApplication` callbacks 
+- This is where things start to be more about how we are writing our code and what we are doing.
+- Most applications have a couple things in common: 
+- Donwloading JSON and displaying it, so post-main I am going to focus on that use case
+
+---
+
+# Clean up leaks
+
+- Use the Leaks Instrument and the Memory Graph Debugger to clean up leaks
+
+![inline 100%](leaks.png)
+
+^- Has tons of benefits but:
+- Cleaning up memory leaks makes allocation of new memory faster
+- Makes cold starts less frequent because you get booted out less frequently
+
+--- 
+
+![inline](memorydebugger.png)
+
+^ - I actually use the memory debugger the most, because its far more visual about things
+- Simple screenshot of your app in the memory debugger - shows what points too/owns other things
+
+---
+
+![inline](showsleaks.png)
+
+^ - Shows retain cycles visually 
+- As you can see here it looks like one class accidentally has a `strong` delegate
+- Change to weak 
 
 ---
 
 # Third party libraries
 
 - Be careful about adding third party libraries
+- We have seen seconds (**!**) taken from our launch time due to a few third party libraries
+- Be careful about adding *trendy* libraries
 
-
-^ Not only can they be doing things for you in pre main (Increasing objc setup time and initialization time and potentially adding dynamic frameworks - since they have, they can add tons of network calls and blocking I/O calls during startup. 
-Not only this, many third party analytics and social SDKs have timers that wake up your application during runtime and do expensive work. This is bad for user experience for likely a little gain for you. 
-
+^ - increases pre main and post main
+- they can add tons of network calls and blocking I/O calls during startup. 
+- If you cant remove - see if you can defer some of the post-main costs
+- Not only this, many third party analytics and social SDKs have timers that wake up your application during runtime and do expensive work. This is bad for user experience for likely a little gain for you. 
 
 ---
 
@@ -215,8 +277,8 @@ Not only this, many third party analytics and social SDKs have timers that wake 
 	- Costs between 15-50+ ms depending on device per image
 - Similar issues with UIFont - especially bundled fonts.
 
-^ `UIImage(named:` can use  - also with UIFont
-There is a shared cache internally to apple that is extremely expensive for the first call for any given image name string (not just i/o)
+^ - `UIImage(named:` can use  - also with UIFont
+- There is a shared cache internally to apple that is extremely expensive for the first call for any given image name string (not just i/o)
 
 ---
 
@@ -231,42 +293,43 @@ There is a shared cache internally to apple that is extremely expensive for the 
 
 
 ```swift
-
 struct BackgroundResourceLoader {
     static func loadImages() {
-        DispatchQueue.global(qos: .utility).async {
-            let _ = UIImage.heart
+        DispatchQueue.global(qos: .utility).async {        
+            let _ = UIImage(named: "heart.png")
         }
     }
 }
 
 ...
 
-    func application(_ application: UIApplication,
-     willFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey : Any]? = nil) -> Bool {
+func application(_ application: UIApplication,
+willFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey : Any]? = nil) -> Bool {
 	     
-		// Load resources in the beginning of this method
-        BackgroundResourceLoader.loadImages()
+	// Load resources in the beginning of this method
+    BackgroundResourceLoader.loadImages()
         
 ...
 
 ```
 
-^ We noticed that during application launch we had spare threads that were idling during application launch, so we can add a lot of work that previously had to happen serially on the main queue to background threads, and to be executed in parallel. This allows us to take full advantage of all the cores of an iPhone on launch instead of loading everything serially on the main thread.
-However you need to be careful - if your application doesnt already generate threads and you add this; you might end up allocating a bunch of extra threads; however in our case (and for my side projects) this has worked out as one of the best techniques to improve post main launch time.
+^ - We noticed that during application launch we had spare threads that were idling during application launch, 
+- so we can add a lot of work that previously had to happen serially on the main queue to background threads, and to be executed in parallel. 
+- This allows us to take full advantage of all the cores of an iPhone on launch instead of loading everything serially on the main thread.
+- However you need to be careful - if your application doesn't already generate threads and you add this; you might end up allocating a bunch of extra threads; however in our case (and for my side projects) this has worked out as one of the best techniques to improve post main launch time.
 
 ---
 
 # `UIImage(named: "")` solution 2
 
 
-```
+```swift
 extension UIImage {
-    static func directoryForHeartResource() -> String? {
-        return Bundle.main.path(forResource: "heart", ofType: "png")
+    static func directoryForHeartResource() -> String {
+        return // Path to resource
     }
     
-    static let heart = UIImage(named: directoryForHeartResource() ?? "")
+    static let heart = UIImage(contentsOfFile: directoryForHeartResource())
 }
 
 // Callsite
@@ -275,12 +338,12 @@ heartImageView.image = UIImage.heart
 
 ```
 
-^Pros of first solution is that you don't have to change all your callsites
+^ - Pros of first solution is that you don't have to change all your callsites
 And you avoid I/O 100% on the main thread (but again - I/O isn't the main problem here)
 
-Pros of the second solution is that you maintain your own cache which is a lot more efficient but doesn't necessarily free the images in the case of memory warnings 
+^ - Pros of the second solution is that you maintain your own cache which is a lot more efficient but doesn't necessarily free the images in the case of memory warnings 
 
-You can also use a hybrid solution (do the second one but also load it originally on the background queue
+^ - You can also use a hybrid solution (do the second one but also load it originally on the background queue
 
 ___
 
@@ -390,7 +453,8 @@ Uses VC containment
 
 
 ^ Whole Module Optimization - There are multiple kinds of optimizations that this allows the compiler to do - the main being `Generic Specialization` which can make specialized versions of generic function calls. But this also allows other things such as function inlining and the removal of dead code.
-Link Time Optimization - similar - allows compiler to do similar optimizations to C based languages - inlines commonly called functions and can strip unused code intermodule 
+
+^ -Link Time Optimization - similar - allows compiler to do similar optimizations to C based languages - inlines commonly called functions and can strip unused code intermodule 
 
 ---
 
@@ -412,7 +476,9 @@ Repeated use of `weak` references is something that I have turned on in some of 
 - Use less dynamic libraries
 - Use Swift and/or remove dead Objective-C code
 - Measure and optimize assets and UIViewController initializations during launch
-- Make sure your project settings are optimal for what tradeoffs you want
+- Make sure your project settings are optimal for the tradeoffs you want
+
+^ Utilizing all these techniques - we are now under 4 seconds from 12-15
 
 ---
 
