@@ -4,7 +4,11 @@
 ## Ken Ackerson
 
 
-^ I am a staff engineer at tumblr, 
+^ I am a staff engineer at tumblr,
+- building new features
+- building developer tools
+- building frameworks for developers (networking and UI)
+- and most recently a big focus on application startup performance
 
 ---
 
@@ -32,10 +36,20 @@
 
 # Why it matters
 
+- 86% of consumers have deleted applications because of performance issues.
+	- *[Source](https://www.appdynamics.com/media/uploaded-files/1425406960/app-attention-span-research-report-1.pdf)*
+- Users hate to wait
 
+^ Study after study conclude that performance is a key aspect of driving user engagement and retention AND revenue.
+Checkout that source for even more data around this impact as well
+Apple is focusing on performance in iOS 12 as a key part of the 
 
-^ Study after study conclude that performance is a key aspect of driving user engagement and retention
-As you heard yesterday - Apple is focusing on performance in iOS 12 as a key part of the 
+---
+
+> App to slow! One Star!!
+-- App Store Review
+
+^ Not actual, but we did see a lot of these!
 
 ---
 
@@ -52,9 +66,29 @@ static func measure(function: () -> ()) {
     let t2 = CFAbsoluteTimeGetCurrent()
     print("Time taken \(t2 - time)")
 }
+
+// Callsite
+measure {
+	// Some expensive work
+}
+
 ```
 
-^ This allows developers to do simple profiling without needing to fire up instruments
+^ Measure in release mode
+Add this quick and dirty measure function 
+
+---
+
+# Instruments
+
+- File Activity
+- System Usage
+- Time Profiler
+- Network
+
+^ These are the main instruments
+We use these to check out what our app is doing and finding performance issues
+Not going to go to much into these but will cover the System Usage instrument later
 
 ---
 
@@ -63,7 +97,7 @@ static func measure(function: () -> ()) {
 - Before `UIApplication` callbacks
 - View metrics with the `DYLD_PRINT_STATISTICS` env variable
 
-^ So before willFinishLaunching and 
+^ So before willFinishLaunching 
 
 ---
 
@@ -198,17 +232,23 @@ There is a shared cache internally to apple that is extremely expensive for the 
 
 ```swift
 
-    func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey : Any]? = nil)
-     -> Bool {
-		
-        myConcurrentQueue.async {
-           // Populates the shared `UIImage(named` cache which is expensive
-           let _ = UIImage(named: "heart.png")
-           
-		   // load other images...
+struct BackgroundResourceLoader {
+    static func loadImages() {
+        DispatchQueue.global(qos: .utility).async {
+            let _ = UIImage.heart
         }
+    }
+}
 
+...
 
+    func application(_ application: UIApplication,
+     willFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey : Any]? = nil) -> Bool {
+	     
+		// Load resources in the beginning of this method
+        BackgroundResourceLoader.loadImages()
+        
+...
 
 ```
 
@@ -235,7 +275,7 @@ heartImageView.image = UIImage.heart
 
 ```
 
-^ Pros of first solution is that you don't have to change all your callsites
+^Pros of first solution is that you don't have to change all your callsites
 And you avoid I/O 100% on the main thread (but again - I/O isn't the main problem here)
 
 Pros of the second solution is that you maintain your own cache which is a lot more efficient but doesn't necessarily free the images in the case of memory warnings 
@@ -314,6 +354,35 @@ Uses VC containment
 
 ---
 
+# Concurrent Programming using GCD groups
+
+```swift
+        let group = DispatchGroup()
+        let queue = DispatchQueue(label: "com.kenny", qos: .default, attributes: .concurrent, autoreleaseFrequency: .inherit, target: nil)
+        
+        func expensiveWork() {
+            // Expensive work
+        }
+        
+        func moreExpensiveWork() {
+            // More expensive work
+        }
+        
+        // We can pass the function directly because of first class functions in Swift
+        queue.async(group: group, execute: expensiveWork)
+        queue.async(group: group, execute: moreExpensiveWork)
+
+        group.notify(queue: DispatchQueue.global(qos: .utility)) {
+            // Work is done! Use the work that was done in `expensiveWork` and `moreExpensiveWork`
+        }
+```
+
+^ Use GCD Groups to:
+- Split single task into multiple parts (think GIF decoding)
+- Dont use `wait` because it blocks the whole thread
+
+---
+
 # Compiler settings we've enabled
 
 - WMO (Whole Module Optimization) 
@@ -347,6 +416,15 @@ Repeated use of `weak` references is something that I have turned on in some of 
 
 ---
 
+# More Resources
+
+- [Optimizing App Startup Time - WWDC 2016](https://developer.apple.com/videos/play/wwdc2016/406/)
+- [App Startup Time: Past, Present, and Future - WWD 2017](https://developer.apple.com/videos/play/wwdc2017/413/)
+- [iOS App Launch time analysis and optimizations](https://medium.com/@avijeet.dutta13/ios-app-launch-time-analysis-and-optimization-a219ee81447c)
+- [Optimizing Facebook for iOS start time](https://code.facebook.com/posts/1675399786008080/optimizing-facebook-for-ios-start-time/)
+
+---
+
 # Special thanks
 
 Paul Rehkugler
@@ -359,10 +437,14 @@ Jimmy Schementi
 
 # Thats all
 
-twitter.com/pearapps
+[twitter.com/pearapps](twitter.com/pearapps)
 
-stepsapp.co
-developear.com
+[stepsapp.co](http://stepsapp.co)
+[developear.com](developear.com)
+
+pearapps@gmail.com
+
+[https://github.com/Pearapps/AppStartupPerformanceTalk](https://github.com/Pearapps/AppStartupPerformanceTalk)
 
 ----
 
